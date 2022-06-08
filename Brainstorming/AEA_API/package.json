@@ -10,7 +10,8 @@
   "dependencies": {
     "express": "^4.16.1",
     "pg": "^8.7.3",
-    "sequelize": "^6.20.1"
+    "sequelize": "^6.20.1",
+    "pg-promise": "^10.11.1"
   },
   "keywords": [],
   "license": "ISC"
