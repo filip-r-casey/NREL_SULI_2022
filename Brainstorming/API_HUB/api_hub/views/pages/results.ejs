@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <%- include('../partials/head.ejs') %>
+  </head>
+  <body>
+    <%- include('../partials/header.ejs') %>
+    <h2>NASA Power Data</h2>
+    <% for(const [key, value] of Object.entries(NASA)) { %> <%-key + " " +
+    value%> <% } %>
+    <h2>Wind Toolkit Data</h2>
+  </body>
+  <%- include('../partials/footer.ejs') %>
+</html>

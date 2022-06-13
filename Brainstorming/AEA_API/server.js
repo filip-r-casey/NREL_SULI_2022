@@ -45,17 +45,42 @@ app.get("/sites/coord_search", (req, res) => {
     })
     .catch((error) => {
       console.log(error);
+      res.send("error");
     });
 });
 
 app.get("/sites/name_search", (req, res) => {
   var name = req.query.name;
+  db.any("SELECT * FROM aea_sites WHERE site_name LIKE $1", ["%" + name + "%"])
+    .then((user) => {
+      var name_response = user;
+      res.setHeader("Content-Type", "application/json");
+      res.send(name_response);
+    })
+    .catch((error) => {
+      console.log(error);
+      res.send("error");
+    });
 });
 
 //wind speed
 app.get("/wind_speed", (req, res) => {
   var site = req.query.site;
-  var date = req.query.site;
+  var month = req.query.month;
+  var hour = req.query.hour;
+  db.any(
+    "SELECT * FROM aea_sites WHERE site_name = $1 AND month = $2 AND hour = $3",
+    [site, month, hour]
+  )
+    .then((user) => {
+      var wind_response = user;
+      res.setHeader("Content-Type", "application/json");
+      res.send(wind_response);
+    })
+    .catch((error) => {
+      console.log(error);
+      res.send("error");
+    });
 });
 
 app.listen(PORT, HOST);
