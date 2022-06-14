@@ -22,6 +22,8 @@ app.post("/api/search", function (req, res) {
   var wind_surface = req.body.WindSurface;
   var start_date = req.body.start;
   var end_date = req.body.end;
+  var begin_year = new Date(start_date).getFullYear();
+  var end_year = new Date(end_date).getFullYear();
 
   // NASA POWER
   var formatted_start_date =
@@ -34,9 +36,6 @@ app.post("/api/search", function (req, res) {
   } else {
     var param = "WS10M";
   }
-  var nasa = axios.get(
-    `https://power.larc.nasa.gov/api/temporal/hourly/point?community=RE&parameters=${param},WSC&latitude=${lat}&longitude=${lon}&start=${formatted_start_date}&end=${formatted_end_date}&format=JSON&wind-elevation=${height}&wind-surface=${wind_surface}`
-  );
 
   // Wind Toolkit
   function yearRange(start_year, end_year) {
@@ -59,27 +58,62 @@ app.post("/api/search", function (req, res) {
   var closest = heights.reduce(function (prev, curr) {
     return Math.abs(curr - height) < Math.abs(prev - height) ? curr : prev;
   });
-  console.log(spacedList(yearRange(begin_year, end_year)));
 
   var wind_key = process.env.WIND_TOOLKIT_API_KEY;
   var email = process.env.EMAIL;
+  var nasa = axios.get(
+    `https://power.larc.nasa.gov/api/temporal/hourly/point?community=RE&parameters=${param},WSC&latitude=${lat}&longitude=${lon}&start=${formatted_start_date}&end=${formatted_end_date}&format=JSON&wind-elevation=${height}&wind-surface=${wind_surface}`
+  );
   var wind_toolkit = axios.get(
-    `https://developer.nrel.gov/api/wind-toolkit/v2/wtk-download.json?api_key=${wind_key}&wkt=POINT(${lat} ${lon})&attributes=windspeed_${closest}m,winddirection_${closest}m&names=${spacedList(
+    `https://developer.nrel.gov/api/wind-toolkit/v2/wind/wtk-download.json?api_key=${wind_key}&wkt=POINT(${lat} ${lon})&attributes=windspeed_${closest}m,winddirection_${closest}m&names=${spacedList(
       yearRange(begin_year, end_year)
     )}&email=${email}`
   );
-  axios
-    .all([nasa, wind_toolkit])
-    .then(
-      axios.spread((...responses) => {
-        var nasa_data = responses[0].data.properties.parameter.WSC;
+  // Find compatible sources
+  var compatible_sources = [nasa, wind_toolkit];
+  if (begin_year < 2007 || end_year > 2014) {
+    compatible_sources.pop(wind_toolkit);
+  }
+  if (begin_year < 2001 || wind_surface == "unknown") {
+    compatible_sources.pop(nasa);
+  }
+  console.log(compatible_sources.length);
+  // API Call
+  if (compatible_sources.length > 0) {
+    Promise.all(compatible_sources)
+      .then((responses) => {
+        if (compatible_sources.indexOf(nasa) >= 0) {
+          var nasa_data =
+            responses[compatible_sources.indexOf(nasa)].data.properties
+              .parameter.WSC;
+        }
+        if (compatible_sources.indexOf(wind_toolkit)) {
+          var wind_toolkit_data =
+            responses[compatible_sources.indexOf(wind_toolkit)];
+        }
         res.render("pages/results", { NASA: nasa_data });
       })
-    )
-    .catch((error) => {
-      console.log(error);
-      console.log(error.response.data);
-    });
+      .catch((errors) => {
+        console.log(errors);
+        if (
+          wind_toolkit in compatible_sources &&
+          errors.config.url.includes("wind-toolkit")
+        ) {
+          var wind_toolkit_errors = Array.from(errors.response.data.errors);
+        } else if (
+          nasa in compatible_sources &&
+          errors.config.url.includes("nasa")
+        ) {
+          var nasa_power_errors = errors.response.data.errors;
+        }
+        res.render("pages/errors", {
+          NASA: nasa_power_errors,
+          WIND: wind_toolkit_errors,
+        });
+      });
+  } else {
+    res.render("pages/errors", { NASA: null, WIND: null });
+  }
 });
 app.listen(3000, function () {
   console.log("Server started on port 3000");
