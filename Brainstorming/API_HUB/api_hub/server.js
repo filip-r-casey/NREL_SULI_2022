@@ -69,48 +69,56 @@ app.post("/api/search", function (req, res) {
       yearRange(begin_year, end_year)
     )}&email=${email}`
   );
+
+  // Open Weather
+  var open_weather_key = process.env.OPEN_WEATHER_API_KEY;
+  var open_weather = axios.get(
+    `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&appid=${open_weather_key}`
+  );
+
   // Find compatible sources
-  var compatible_sources = [nasa, wind_toolkit];
+  var compatible_sources = [nasa, wind_toolkit, open_weather];
   if (begin_year < 2007 || end_year > 2014) {
     compatible_sources.pop(wind_toolkit);
   }
   if (begin_year < 2001 || wind_surface == "unknown") {
     compatible_sources.pop(nasa);
   }
-  console.log(compatible_sources.length);
+
   // API Call
   if (compatible_sources.length > 0) {
-    Promise.all(compatible_sources)
-      .then((responses) => {
-        if (compatible_sources.indexOf(nasa) >= 0) {
-          var nasa_data =
-            responses[compatible_sources.indexOf(nasa)].data.properties
+    Promise.allSettled(compatible_sources).then((responses) => {
+      if (compatible_sources.indexOf(nasa) >= 0) {
+        var nasa_data = responses[compatible_sources.indexOf(nasa)];
+        if (nasa_data.status != "fulfilled") {
+          var nasa_errors = nasa_data.reason.response.data.errors;
+        } else {
+          nasa_data =
+            responses[compatible_sources.indexOf(nasa)].value.data.properties
               .parameter.WSC;
         }
-        if (compatible_sources.indexOf(wind_toolkit)) {
-          var wind_toolkit_data =
-            responses[compatible_sources.indexOf(wind_toolkit)];
+      }
+      if (compatible_sources.indexOf(wind_toolkit >= 0)) {
+        var wind_toolkit_data =
+          responses[compatible_sources.indexOf(wind_toolkit)];
+        wind_toolkit_data = wind_toolkit_data.value.data.outputs.downloadUrl;
+        if (wind_toolkit_data.status == "rejected") {
+          var wind_toolkit_errors =
+            wind_toolkit_data.reason.response.data.errors;
         }
-        res.render("pages/results", { NASA: nasa_data });
-      })
-      .catch((errors) => {
-        console.log(errors);
-        if (
-          wind_toolkit in compatible_sources &&
-          errors.config.url.includes("wind-toolkit")
-        ) {
-          var wind_toolkit_errors = Array.from(errors.response.data.errors);
-        } else if (
-          nasa in compatible_sources &&
-          errors.config.url.includes("nasa")
-        ) {
-          var nasa_power_errors = errors.response.data.errors;
-        }
-        res.render("pages/errors", {
-          NASA: nasa_power_errors,
-          WIND: wind_toolkit_errors,
-        });
+      }
+      if (compatible_sources.indexOf(open_weather >= 0)) {
+        var open_weather_data =
+          responses[compatible_sources.indexOf(open_weather)];
+        console.log(open_weather_data);
+      }
+      res.render("pages/results", {
+        NASA: nasa_data,
+        NASA_ERR: nasa_errors,
+        WIND: wind_toolkit_data,
+        WIND_ERR: wind_toolkit_errors,
       });
+    });
   } else {
     res.render("pages/errors", { NASA: null, WIND: null });
   }
